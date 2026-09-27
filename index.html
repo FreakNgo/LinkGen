@@ -238,19 +238,11 @@
 <script>
 function hexToDecimalString(hex) {
   hex = hex.replace(/^0x/i, '');
-  let dec = '0';
-  for (const ch of hex.toLowerCase()) {
-    let carry = parseInt(ch, 16);
-    let result = '';
-    for (const d of dec) {
-      const val = parseInt(d, 10) * 16 + carry;
-      result += Math.floor(val / 10);
-      carry = val % 10;
-    }
-    result = result.replace(/^0+/, '') || '0';
-    dec = result + carry;
+  try {
+    return BigInt('0x' + hex).toString();
+  } catch (e) {
+    return null;
   }
-  return dec;
 }
 
 function extractShopName(url) {
@@ -272,9 +264,15 @@ function extractCid(url) {
   let m = url.match(/[?&]cid=(\d+)/);
   if (m) return m[1];
   m = url.match(/!1s0x[0-9a-fA-F]+:0x([0-9a-fA-F]+)/);
-  if (m) return hexToDecimalString(m[1]);
+  if (m) {
+    const v = hexToDecimalString(m[1]);
+    if (v) return v;
+  }
   m = url.match(/0x[0-9a-fA-F]+:0x([0-9a-fA-F]+)/);
-  if (m) return hexToDecimalString(m[1]);
+  if (m) {
+    const v = hexToDecimalString(m[1]);
+    if (v) return v;
+  }
   return null;
 }
 
