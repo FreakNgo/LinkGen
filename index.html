@@ -58,14 +58,38 @@
     font-size:1.05rem;
     color:var(--muted);
     max-width:46ch;
-    margin:0 0 40px;
+    margin:0 0 32px;
+  }
+  .tabs{
+    display:flex;
+    gap:4px;
+    margin-bottom:16px;
+  }
+  .tab-btn{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--muted);
+    background:transparent;
+    border:1px solid var(--line);
+    border-radius:3px 3px 0 0;
+    border-bottom:none;
+    padding:10px 18px;
+    cursor:pointer;
+  }
+  .tab-btn.active{
+    color:var(--pine-dark);
+    background:var(--panel);
+    border-color:var(--line);
   }
   .card{
     background:var(--panel);
     border:1px solid var(--line);
-    border-radius:4px;
+    border-radius:0 4px 4px 4px;
     padding:28px;
   }
+  .panel{ display:none; }
+  .panel.active{ display:block; }
   label{
     display:block;
     font-family:'Helvetica Neue',Arial,sans-serif;
@@ -106,6 +130,21 @@
   }
   button.go:hover{background:var(--pine-dark);}
   button.go:active{transform:translateY(1px);}
+  button.go.secondary{
+    background:transparent;
+    color:var(--pine-dark);
+    border:1px solid var(--pine-dark);
+  }
+  button.go.secondary:hover{background:var(--pine-dark);color:#fff;}
+
+  .step-note{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:13px;
+    color:var(--muted);
+    margin:10px 0 20px;
+    padding-left:14px;
+    border-left:2px solid var(--line);
+  }
 
   #result{
     margin-top:28px;
@@ -180,7 +219,7 @@
     line-height:1.6;
   }
   .error{
-    margin-top:28px;
+    margin-top:20px;
     font-family:'Helvetica Neue',Arial,sans-serif;
     font-size:13.5px;
     color:#9C3B2B;
@@ -208,10 +247,36 @@
   <h1>Send customers straight to the review box.</h1>
   <p class="lede">Paste a Google Maps link to your business. You'll get a link that opens Google's review form directly, with the star picker already in view — no searching required.</p>
 
+  <div class="tabs">
+    <button class="tab-btn active" id="tabBtnLong" data-tab="long">Long link</button>
+    <button class="tab-btn" id="tabBtnShort" data-tab="short">Short link</button>
+  </div>
+
   <div class="card">
-    <label for="mapsUrl">Google Maps business URL</label>
-    <textarea id="mapsUrl" placeholder="https://www.google.com/maps/place/Your+Shop/@..."></textarea>
-    <button class="go" id="generate">Generate review link</button>
+
+    <div class="panel active" id="panelLong">
+      <label for="mapsUrl">Google Maps business URL</label>
+      <textarea id="mapsUrl" placeholder="https://www.google.com/maps/place/Your+Shop/@..."></textarea>
+      <button class="go" id="generateLong">Generate review link</button>
+    </div>
+
+    <div class="panel" id="panelShort">
+      <label for="shortUrl">Shortened link (maps.app.goo.gl or goo.gl/maps)</label>
+      <textarea id="shortUrl" placeholder="https://maps.app.goo.gl/..."></textarea>
+      <button class="go" id="resolveBtn">Resolve &amp; generate review link</button>
+      <p class="fine" id="resolveStatus"></p>
+
+      <details style="margin-top:22px">
+        <summary style="cursor:pointer;font-family:'Helvetica Neue',Arial,sans-serif;font-size:12.5px;color:var(--muted);letter-spacing:.02em;">Automatic resolve not working? Do it by hand</summary>
+        <div style="margin-top:16px">
+          <button class="go secondary" id="openShort">Open this link in a new tab</button>
+          <p class="step-note">Google only attaches the shop's ID once the short link redirects. Tap the button above, wait for the full map page to load, then copy the address bar URL and paste it below.</p>
+          <label for="resolvedUrl">Full URL after it redirects</label>
+          <textarea id="resolvedUrl" placeholder="https://www.google.com/maps/place/..."></textarea>
+          <button class="go" id="generateShort">Generate review link</button>
+        </div>
+      </details>
+    </div>
 
     <div class="error" id="errorBox"></div>
 
@@ -232,7 +297,7 @@
     </div>
   </div>
 
-  <footer>Works with full Google Maps place links. If you only have a short link (maps.app.goo.gl or goo.gl/maps), open it once in a browser first, then paste the full address bar URL here.</footer>
+  <footer>The long link tab reads the ID straight out of a full google.com/maps/place/... URL. The short link tab is for links your phone's Share button gives you — those need one extra step because Google doesn't put the shop's ID in the short version.</footer>
 </div>
 
 <script>
@@ -281,21 +346,42 @@ function extractFeaturePair(url) {
   return null;
 }
 
-document.getElementById('generate').addEventListener('click', () => {
-  const raw = document.getElementById('mapsUrl').value.trim();
+// Short links (maps.app.goo.gl) carry no ID until Google's redirect fires.
+// This asks a public redirect-resolving proxy to follow that redirect and
+// report back the final URL, so the whole thing can happen without the
+// person leaving the page. It depends on that third-party service being up,
+// so a manual "open it yourself" path stays available if this fails.
+async function resolveShortLink(shortUrl) {
+  const endpoint = 'https://api.allorigins.win/get?url=' + encodeURIComponent(shortUrl);
+  const res = await fetch(endpoint);
+  if (!res.ok) throw new Error('Lookup service returned an error.');
+  const data = await res.json();
+  const finalUrl = data && data.status && data.status.url;
+  if (!finalUrl || !/maps\/place\//i.test(finalUrl)) {
+    throw new Error('Could not find a resolved Maps URL.');
+  }
+  return finalUrl;
+}
+
+function showError(msg) {
+  document.getElementById('result').style.display = 'none';
+  const errorBox = document.getElementById('errorBox');
+  errorBox.textContent = msg;
+  errorBox.style.display = 'block';
+}
+
+function generateFromUrl(raw) {
   const errorBox = document.getElementById('errorBox');
   const result = document.getElementById('result');
   errorBox.style.display = 'none';
   result.style.display = 'none';
 
   if (!raw) {
-    errorBox.textContent = 'Paste a Google Maps link first.';
-    errorBox.style.display = 'block';
+    showError('Paste a Google Maps link first.');
     return;
   }
   if (/goo\.gl|maps\.app\.goo\.gl/i.test(raw) && !/maps\/place/i.test(raw)) {
-    errorBox.textContent = "That's a shortened link, so it doesn't carry the shop's ID yet. Open it in a browser tab, then paste the full URL from the address bar (it should contain \"/maps/place/\").";
-    errorBox.style.display = 'block';
+    showError("That's still a shortened link. Use the \"Short link\" tab to open it first, then paste the full URL it redirects to.");
     return;
   }
 
@@ -322,8 +408,7 @@ document.getElementById('generate').addEventListener('click', () => {
   }
 
   if (!placeId) {
-    errorBox.textContent = "Couldn't find a location ID in that link. Make sure you copied the full URL from the address bar after opening the place in Google Maps — it should contain \"/maps/place/\" and a \"data=...!1s0x...:0x...\" section.";
-    errorBox.style.display = 'block';
+    showError("Couldn't find a location ID in that link. Make sure it's the full URL from the address bar after opening the place in Google Maps — it should contain \"/maps/place/\" and a \"data=...!1s0x...:0x...\" section.");
     return;
   }
 
@@ -337,6 +422,67 @@ document.getElementById('generate').addEventListener('click', () => {
   document.getElementById('openLink').href = link;
   document.getElementById('fallbackNote').textContent = fallback;
   result.style.display = 'block';
+}
+
+function switchTab(tab) {
+  const isLong = tab === 'long';
+  document.getElementById('tabBtnLong').classList.toggle('active', isLong);
+  document.getElementById('tabBtnShort').classList.toggle('active', !isLong);
+  document.getElementById('panelLong').classList.toggle('active', isLong);
+  document.getElementById('panelShort').classList.toggle('active', !isLong);
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('result').style.display = 'none';
+}
+
+document.getElementById('tabBtnLong').addEventListener('click', () => switchTab('long'));
+document.getElementById('tabBtnShort').addEventListener('click', () => switchTab('short'));
+
+document.getElementById('generateLong').addEventListener('click', () => {
+  generateFromUrl(document.getElementById('mapsUrl').value.trim());
+});
+
+document.getElementById('generateShort').addEventListener('click', () => {
+  generateFromUrl(document.getElementById('resolvedUrl').value.trim());
+});
+
+document.getElementById('resolveBtn').addEventListener('click', async () => {
+  const shortUrl = document.getElementById('shortUrl').value.trim();
+  const statusEl = document.getElementById('resolveStatus');
+  const btn = document.getElementById('resolveBtn');
+
+  if (!shortUrl) {
+    showError('Paste your shortened link first.');
+    return;
+  }
+
+  document.getElementById('errorBox').style.display = 'none';
+  statusEl.textContent = 'Resolving the short link…';
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Resolving…';
+
+  try {
+    const finalUrl = await resolveShortLink(shortUrl);
+    document.getElementById('resolvedUrl').value = finalUrl;
+    statusEl.textContent = '';
+    generateFromUrl(finalUrl);
+  } catch (e) {
+    statusEl.textContent = '';
+    showError("Couldn't resolve that automatically — the lookup service may be unavailable right now. I've opened the link in a new tab instead: copy the full URL from its address bar, paste it into the box under \"Do it by hand\" below, then press Generate there.");
+    window.open(shortUrl, '_blank', 'noopener');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+});
+
+document.getElementById('openShort').addEventListener('click', () => {
+  const val = document.getElementById('shortUrl').value.trim();
+  if (!val) {
+    showError('Paste your shortened link first.');
+    return;
+  }
+  window.open(val, '_blank', 'noopener');
 });
 
 document.getElementById('copyBtn').addEventListener('click', () => {
@@ -350,9 +496,10 @@ document.getElementById('copyBtn').addEventListener('click', () => {
 });
 
 document.getElementById('mapsUrl').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-    document.getElementById('generate').click();
-  }
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) document.getElementById('generateLong').click();
+});
+document.getElementById('resolvedUrl').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) document.getElementById('generateShort').click();
 });
 </script>
 </body>
