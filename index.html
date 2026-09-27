@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Link Generator</title>
+<style>
+  :root{
+    --ink:#122019;
+    --paper:#F6F3EC;
+    --panel:#FFFFFF;
+    --pine:#1F4B3F;
+    --pine-dark:#123028;
+    --amber:#C97A2B;
+    --line:#DAD3C2;
+    --muted:#5B6660;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Iowan Old Style','Georgia',ui-serif,serif;
+    line-height:1.5;
+    min-height:100vh;
+  }
+  .wrap{
+    max-width:640px;
+    margin:0 auto;
+    padding:64px 24px 80px;
+  }
+  .mark{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:40px;
+  }
+  .pin{
+    width:22px;height:22px;flex:none;
+    color:var(--pine);
+  }
+  .mark span{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:13px;
+    letter-spacing:.04em;
+    color:var(--muted);
+  }
+  h1{
+    font-size:2.5rem;
+    line-height:1.12;
+    margin:0 0 14px;
+    font-weight:600;
+    color:var(--pine-dark);
+    max-width:11ch;
+  }
+  p.lede{
+    font-size:1.05rem;
+    color:var(--muted);
+    max-width:46ch;
+    margin:0 0 40px;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:28px;
+  }
+  label{
+    display:block;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:12.5px;
+    letter-spacing:.02em;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+  textarea{
+    width:100%;
+    min-height:84px;
+    resize:vertical;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:15px;
+    color:var(--ink);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:12px 14px;
+    background:#FCFBF8;
+  }
+  textarea:focus{
+    outline:2px solid var(--pine);
+    outline-offset:1px;
+  }
+  button.go{
+    margin-top:16px;
+    width:100%;
+    background:var(--pine);
+    color:#fff;
+    border:none;
+    border-radius:3px;
+    padding:13px 16px;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  button.go:hover{background:var(--pine-dark);}
+  button.go:active{transform:translateY(1px);}
+
+  #result{
+    margin-top:28px;
+    display:none;
+  }
+  .result-card{
+    border-top:1px solid var(--line);
+    padding-top:24px;
+  }
+  .shop-name{
+    font-size:1.15rem;
+    font-weight:600;
+    color:var(--pine-dark);
+    margin:0 0 4px;
+  }
+  .status-ok{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:13px;
+    color:var(--pine);
+    margin:0 0 18px;
+  }
+  .status-warn{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:13px;
+    color:var(--amber);
+    margin:0 0 18px;
+  }
+  .link-row{
+    display:flex;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .link-box{
+    flex:1;
+    font-family:ui-monospace,'SF Mono',Menlo,monospace;
+    font-size:12.5px;
+    color:var(--ink);
+    background:#FCFBF8;
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:10px 12px;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+  .copy-btn{
+    flex:none;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:13px;
+    font-weight:600;
+    color:var(--pine-dark);
+    background:transparent;
+    border:1px solid var(--pine-dark);
+    border-radius:3px;
+    padding:0 16px;
+    cursor:pointer;
+  }
+  .copy-btn:hover{background:var(--pine-dark);color:#fff;}
+  .open-link{
+    display:inline-block;
+    margin-top:6px;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:13.5px;
+    color:var(--amber);
+    text-decoration:none;
+    border-bottom:1px solid var(--amber);
+  }
+  .fine{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:12.5px;
+    color:var(--muted);
+    margin-top:22px;
+    line-height:1.6;
+  }
+  .error{
+    margin-top:28px;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:13.5px;
+    color:#9C3B2B;
+    display:none;
+  }
+  footer{
+    margin-top:48px;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:12px;
+    color:var(--muted);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mark">
+    <svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <path d="M12 22s7-7.58 7-12.5A7 7 0 0 0 5 9.5C5 14.42 12 22 12 22z"/>
+      <circle cx="12" cy="9.5" r="2.5"/>
+    </svg>
+    <span>REVIEW LINK GENERATOR</span>
+  </div>
+
+  <h1>Send customers straight to the review box.</h1>
+  <p class="lede">Paste a Google Maps link to your business. You'll get a link that opens Google's review form directly, with the star picker already in view — no searching required.</p>
+
+  <div class="card">
+    <label for="mapsUrl">Google Maps business URL</label>
+    <textarea id="mapsUrl" placeholder="https://www.google.com/maps/place/Your+Shop/@..."></textarea>
+    <button class="go" id="generate">Generate review link</button>
+
+    <div class="error" id="errorBox"></div>
+
+    <div id="result">
+      <div class="result-card">
+        <p class="shop-name" id="shopName"></p>
+        <p id="statusLine"></p>
+
+        <label>Review link</label>
+        <div class="link-row">
+          <div class="link-box" id="reviewLink"></div>
+          <button class="copy-btn" id="copyBtn">Copy</button>
+        </div>
+        <a class="open-link" id="openLink" href="#" target="_blank" rel="noopener">Open it to test →</a>
+
+        <p class="fine" id="fallbackNote"></p>
+      </div>
+    </div>
+  </div>
+
+  <footer>Works with full Google Maps place links. If you only have a short link (maps.app.goo.gl or goo.gl/maps), open it once in a browser first, then paste the full address bar URL here.</footer>
+</div>
+
+<script>
+function hexToDecimalString(hex) {
+  hex = hex.replace(/^0x/i, '');
+  let dec = '0';
+  for (const ch of hex.toLowerCase()) {
+    let carry = parseInt(ch, 16);
+    let result = '';
+    for (const d of dec) {
+      const val = parseInt(d, 10) * 16 + carry;
+      result += Math.floor(val / 10);
+      carry = val % 10;
+    }
+    result = result.replace(/^0+/, '') || '0';
+    dec = result + carry;
+  }
+  return dec;
+}
+
+function extractShopName(url) {
+  const m = url.match(/\/maps\/place\/([^/@]+)/);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1].replace(/\+/g, ' '));
+  } catch (e) {
+    return m[1].replace(/\+/g, ' ');
+  }
+}
+
+function extractPlaceId(url) {
+  const m = url.match(/[?&]place_id=([^&]+)/) || url.match(/[?&]query_place_id=([^&]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function extractCid(url) {
+  let m = url.match(/[?&]cid=(\d+)/);
+  if (m) return m[1];
+  m = url.match(/!1s0x[0-9a-fA-F]+:0x([0-9a-fA-F]+)/);
+  if (m) return hexToDecimalString(m[1]);
+  m = url.match(/0x[0-9a-fA-F]+:0x([0-9a-fA-F]+)/);
+  if (m) return hexToDecimalString(m[1]);
+  return null;
+}
+
+document.getElementById('generate').addEventListener('click', () => {
+  const raw = document.getElementById('mapsUrl').value.trim();
+  const errorBox = document.getElementById('errorBox');
+  const result = document.getElementById('result');
+  errorBox.style.display = 'none';
+  result.style.display = 'none';
+
+  if (!raw) {
+    errorBox.textContent = 'Paste a Google Maps link first.';
+    errorBox.style.display = 'block';
+    return;
+  }
+  if (/goo\.gl|maps\.app\.goo\.gl/i.test(raw) && !/maps\/place/i.test(raw)) {
+    errorBox.textContent = "That's a shortened link, so it doesn't carry the shop's ID yet. Open it in a browser tab, then paste the full URL from the address bar (it should contain \"/maps/place/\").";
+    errorBox.style.display = 'block';
+    return;
+  }
+
+  const placeId = extractPlaceId(raw);
+  const cid = extractCid(raw);
+  const name = extractShopName(raw) || 'This business';
+
+  if (!placeId && !cid) {
+    errorBox.textContent = "Couldn't find an ID in that link. Make sure you copied the full URL from the address bar after opening the place in Google Maps.";
+    errorBox.style.display = 'block';
+    return;
+  }
+
+  let link, statusText, statusClass, fallback = '';
+  if (placeId) {
+    link = 'https://search.google.com/local/writereview?placeid=' + placeId;
+    statusText = 'Place ID found — this link should open the review form directly.';
+    statusClass = 'status-ok';
+  } else {
+    link = 'https://search.google.com/local/writereview?placeid=' + cid;
+    statusText = 'Location ID found from the map link.';
+    statusClass = 'status-warn';
+    fallback = 'If this link opens the place page instead of the review box, use this address instead: https://www.google.com/maps?cid=' + cid;
+  }
+
+  document.getElementById('shopName').textContent = name;
+  const statusLine = document.getElementById('statusLine');
+  statusLine.textContent = statusText;
+  statusLine.className = statusClass;
+  document.getElementById('reviewLink').textContent = link;
+  document.getElementById('openLink').href = link;
+  document.getElementById('fallbackNote').textContent = fallback;
+  result.style.display = 'block';
+});
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const text = document.getElementById('reviewLink').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyBtn');
+    const original = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = original; }, 1400);
+  });
+});
+
+document.getElementById('mapsUrl').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    document.getElementById('generate').click();
+  }
+});
+</script>
+</body>
+</html>
