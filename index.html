@@ -236,13 +236,26 @@
 </div>
 
 <script>
-function hexToDecimalString(hex) {
-  hex = hex.replace(/^0x/i, '');
-  try {
-    return BigInt('0x' + hex).toString();
-  } catch (e) {
-    return null;
-  }
+// A Maps place URL embeds the location's internal "feature ID" as a pair of
+// 64-bit hex numbers (a:b) after "!1s" or "ftid=". Packing that pair into a
+// small protobuf-shaped, base64url-encoded message reproduces Google's own
+// ChIJ... Place ID -- the identifier the review form is actually keyed to.
+function hexToLeBytes(hex) {
+  const h = hex.replace(/^0x/i, '').padStart(16, '0').slice(-16);
+  const out = [];
+  for (let i = 14; i >= 0; i -= 2) out.push(parseInt(h.slice(i, i + 2), 16));
+  return out;
+}
+
+function bytesToBase64Url(bytes) {
+  const bin = String.fromCharCode(...bytes);
+  const b64 = btoa(bin);
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function featureIdToPlaceId(aHex, bHex) {
+  const bytes = [0x0a, 0x12, 0x09, ...hexToLeBytes(aHex), 0x11, ...hexToLeBytes(bHex)];
+  return bytesToBase64Url(bytes);
 }
 
 function extractShopName(url) {
@@ -260,19 +273,11 @@ function extractPlaceId(url) {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-function extractCid(url) {
-  let m = url.match(/[?&]cid=(\d+)/);
-  if (m) return m[1];
-  m = url.match(/!1s0x[0-9a-fA-F]+:0x([0-9a-fA-F]+)/);
-  if (m) {
-    const v = hexToDecimalString(m[1]);
-    if (v) return v;
-  }
-  m = url.match(/0x[0-9a-fA-F]+:0x([0-9a-fA-F]+)/);
-  if (m) {
-    const v = hexToDecimalString(m[1]);
-    if (v) return v;
-  }
+function extractFeaturePair(url) {
+  let m = url.match(/!1s(0x[0-9a-fA-F]{1,16}):(0x[0-9a-fA-F]{1,16})/i);
+  if (m) return { a: m[1], b: m[2] };
+  m = url.match(/[?&]ftid=(0x[0-9a-fA-F]{1,16}):(0x[0-9a-fA-F]{1,16})/i);
+  if (m) return { a: m[1], b: m[2] };
   return null;
 }
 
@@ -294,27 +299,35 @@ document.getElementById('generate').addEventListener('click', () => {
     return;
   }
 
-  const placeId = extractPlaceId(raw);
-  const cid = extractCid(raw);
+  const explicitPlaceId = extractPlaceId(raw);
+  const pair = extractFeaturePair(raw);
   const name = extractShopName(raw) || 'This business';
 
-  if (!placeId && !cid) {
-    errorBox.textContent = "Couldn't find an ID in that link. Make sure you copied the full URL from the address bar after opening the place in Google Maps.";
+  let placeId = explicitPlaceId;
+  let statusText, statusClass;
+  let fallback = '';
+
+  if (placeId) {
+    statusText = 'Place ID found directly in the link.';
+    statusClass = 'status-ok';
+  } else if (pair) {
+    try {
+      placeId = featureIdToPlaceId(pair.a, pair.b);
+      statusText = "Place ID decoded from the map link's location data.";
+      statusClass = 'status-ok';
+      fallback = 'This is derived from an unofficial Google format, so if it ever stops opening the review box directly, open the link below and search the business name once you land on Maps.';
+    } catch (e) {
+      placeId = null;
+    }
+  }
+
+  if (!placeId) {
+    errorBox.textContent = "Couldn't find a location ID in that link. Make sure you copied the full URL from the address bar after opening the place in Google Maps — it should contain \"/maps/place/\" and a \"data=...!1s0x...:0x...\" section.";
     errorBox.style.display = 'block';
     return;
   }
 
-  let link, statusText, statusClass, fallback = '';
-  if (placeId) {
-    link = 'https://search.google.com/local/writereview?placeid=' + placeId;
-    statusText = 'Place ID found — this link should open the review form directly.';
-    statusClass = 'status-ok';
-  } else {
-    link = 'https://search.google.com/local/writereview?placeid=' + cid;
-    statusText = 'Location ID found from the map link.';
-    statusClass = 'status-warn';
-    fallback = 'If this link opens the place page instead of the review box, use this address instead: https://www.google.com/maps?cid=' + cid;
-  }
+  const link = 'https://search.google.com/local/writereview?placeid=' + placeId;
 
   document.getElementById('shopName').textContent = name;
   const statusLine = document.getElementById('statusLine');
