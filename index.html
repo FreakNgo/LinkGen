@@ -213,6 +213,29 @@
   .qr-actions .dl-png:hover{background:var(--pine);}
   .qr-actions .dl-svg{background:transparent;color:var(--pine-dark);}
   .qr-actions .dl-svg:hover{background:var(--pine-dark);color:#fff;}
+
+  input[type=text]{
+    width:100%;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:15px;
+    color:var(--ink);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:12px 14px;
+    background:#FCFBF8;
+  }
+  input[type=text]:focus{outline:2px solid var(--pine);outline-offset:1px;}
+  .field-gap{margin-top:16px;}
+  .card-frame{
+    width:300px;
+    max-width:100%;
+    margin:0 auto 16px;
+    border:1px solid var(--line);
+    box-shadow:0 6px 20px rgba(18,32,25,.12);
+    background:#fff;
+    line-height:0;
+  }
+  .card-frame svg{width:100%;height:auto;display:block;}
   footer{
     margin-top:48px;
     font-family:'Helvetica Neue',Arial,sans-serif;
@@ -238,6 +261,9 @@
   <div class="card">
     <label for="mapsUrl">Google Maps business URL</label>
     <textarea id="mapsUrl" placeholder="https://www.google.com/maps/place/Your+Shop/@..."></textarea>
+
+    <label for="bizName" class="field-gap">Business name (printed under &ldquo;Review Us&rdquo; on the card)</label>
+    <input type="text" id="bizName" maxlength="60" placeholder="Filled in from the link — edit it anytime" autocomplete="off">
     <button class="go" id="generate">Generate review link</button>
 
     <div class="error" id="errorBox"></div>
@@ -255,6 +281,14 @@
         <a class="open-link" id="openLink" href="#" target="_blank" rel="noopener">Open it to test →</a>
 
         <p class="fine" id="fallbackNote"></p>
+
+        <div class="qr-block">
+          <label style="text-align:center">Printable card &middot; 4 &times; 6 in</label>
+          <div class="card-frame" id="cardFrame"></div>
+          <div class="qr-actions">
+            <button class="dl-png" id="dlCard">Download card (PNG)</button>
+          </div>
+        </div>
 
         <div class="qr-block">
           <label style="text-align:center">QR code for this review link · transparent background</label>
@@ -330,7 +364,7 @@ function roundRectPath(x, y, w, h, r) {
          'V' + (y + r) + 'A' + r + ' ' + r + ' 0 0 1 ' + (x + r) + ' ' + y + 'Z';
 }
 
-function buildQrSvg(text) {
+function buildQrParts(text) {
   const qr = qrcode(0, 'Q');
   qr.addData(text, 'Byte');
   qr.make();
@@ -353,8 +387,123 @@ function buildQrSvg(text) {
               roundRectPath(x + 2 * m, y + 2 * m, 3 * m, 3 * m, 0.9 * m);
     return '<path fill-rule="evenodd" d="' + d + '"/>';
   };
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + size + ' ' + size + '" width="' + size + '" height="' + size + '">' +
-         '<g fill="#000">' + dots + eye(0, 0) + eye(0, n - 7) + eye(n - 7, 0) + '</g></svg>';
+  return { size: size, inner: '<g fill="#000">' + dots + eye(0, 0) + eye(0, n - 7) + eye(n - 7, 0) + '</g>' };
+}
+
+function buildQrSvg(text) {
+  const p = buildQrParts(text);
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + p.size + ' ' + p.size + '" width="' + p.size + '" height="' + p.size + '">' + p.inner + '</svg>';
+}
+
+// ---------- Printable 4x6 card ----------
+const CARD_FONT = "Poppins,'Arial Black','Helvetica Neue',Arial,sans-serif";
+const CARD_BODY_FONT = "'Helvetica Neue',Arial,sans-serif";
+
+function xmlEscape(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+let measureCtx = null;
+function textWidth(text, px) {
+  try {
+    measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+    measureCtx.font = '700 ' + px + 'px ' + CARD_FONT;
+    const w = measureCtx.measureText(text).width;
+    if (w > 0) return w;
+  } catch (e) { /* fall through to estimate */ }
+  return text.length * px * 0.6;
+}
+
+// One line if it fits at a comfortable size, otherwise two balanced lines.
+function fitNameLines(name) {
+  const maxW = 940, maxSize = 76;
+  const perPx = (t) => textWidth(t, 100) / 100;
+  let size = Math.min(maxSize, maxW / perPx(name));
+  if (size >= 46 || name.indexOf(' ') === -1) return { lines: [name], size: size };
+  const words = name.split(' ');
+  let best = null;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(' '), b = words.slice(i).join(' ');
+    const w = Math.max(perPx(a), perPx(b));
+    if (!best || w < best.w) best = { a: a, b: b, w: w };
+  }
+  size = Math.min(maxSize * 0.85, maxW / best.w);
+  return { lines: [best.a, best.b], size: size };
+}
+
+function starPoints(cx, cy, R, r) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI / 2 + i * Math.PI / 5;
+    const rad = i % 2 ? r : R;
+    pts.push((cx + rad * Math.cos(ang)).toFixed(1) + ',' + (cy + rad * Math.sin(ang)).toFixed(1));
+  }
+  return pts.join(' ');
+}
+
+// One corner bracket, drawn once in top-left coordinates and mirrored into place.
+function bracket(tx, ty, sx, sy, color) {
+  return '<g transform="translate(' + tx + ',' + ty + ') scale(' + sx + ',' + sy + ')">' +
+         '<path fill="' + color + '" d="M0 0H249V68H68V249H0Z"/>' +
+         '<path d="M34 249V34H249" fill="none" stroke="#fff" stroke-width="3"/></g>';
+}
+
+function buildCardSvg(qrParts, name) {
+  let nameSvg = '';
+  if (name) {
+    const f = fitNameLines(name);
+    const lh = f.size * 1.2, total = lh * f.lines.length, top = 655 - total / 2;
+    f.lines.forEach((line, i) => {
+      const y = top + lh * i + f.size * 0.95;
+      nameSvg += '<text x="600" y="' + y.toFixed(1) + '" text-anchor="middle" font-family="' + CARD_FONT +
+                 '" font-weight="700" font-size="' + f.size.toFixed(1) + '" fill="#111">' + xmlEscape(line) + '</text>';
+    });
+  }
+  let stars = '';
+  for (let i = 0; i < 5; i++) {
+    stars += '<polygon points="' + starPoints(601 + (i - 2) * 74, 794, 31, 13) + '" fill="#FFC20E" stroke="#FFC20E" stroke-width="4" stroke-linejoin="round"/>';
+  }
+  const diamond = (cx, cy) => '<rect x="-24" y="-24" width="48" height="48" transform="translate(' + cx + ' ' + cy + ') rotate(45)" fill="#000"/>';
+  const k = 700 / qrParts.size;
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1800" width="1200" height="1800">' +
+    '<rect width="1200" height="1800" fill="#fff"/>' +
+    '<rect x="44" y="44" width="1112" height="1712" fill="none" stroke="#000" stroke-width="10"/>' +
+    diamond(44, 44) + diamond(1156, 44) + diamond(44, 1756) + diamond(1156, 1756) +
+    '<g transform="translate(472 98) scale(5.333)">' +
+      '<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>' +
+      '<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>' +
+      '<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>' +
+      '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>' +
+    '</g>' +
+    '<text x="600" y="545" text-anchor="middle" font-family="' + CARD_FONT + '" font-weight="800" font-size="112" fill="#000">Review Us</text>' +
+    nameSvg + stars +
+    bracket(162, 760, 1, 1, '#D92B20') + bracket(1047, 760, -1, 1, '#FFA800') +
+    bracket(162, 1645, 1, -1, '#00874A') + bracket(1047, 1645, -1, -1, '#0059E6') +
+    '<g transform="translate(254.5 852.5) scale(' + k.toFixed(5) + ')">' + qrParts.inner + '</g>' +
+    '<text x="600" y="1722" text-anchor="middle" font-family="' + CARD_BODY_FONT + '" font-size="46" fill="#000">*scan with your phone camera*</text>' +
+    '</svg>';
+}
+
+let currentQrParts = null;
+let currentCardSvg = '';
+let lastAutoName = '';
+
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'shop';
+}
+
+function tidyName(full) {
+  const short = full.split(',')[0].trim();
+  if (/[A-Z]/.test(short) && short === short.toUpperCase()) {
+    return short.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  }
+  return short;
+}
+
+function renderCard() {
+  if (!currentQrParts) return;
+  currentCardSvg = buildCardSvg(currentQrParts, document.getElementById('bizName').value.trim());
+  document.getElementById('cardFrame').innerHTML = currentCardSvg;
 }
 
 // Canvas PNGs carry no print-resolution info, so add a pHYs chunk stating
@@ -429,6 +578,30 @@ document.getElementById('dlPng').addEventListener('click', () => {
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(currentQrSvg);
 });
 
+document.getElementById('dlCard').addEventListener('click', () => {
+  if (!currentCardSvg) return;
+  const img = new Image();
+  img.onload = () => {
+    // 2400 x 3600 px on a 4 x 6 in card = 600 DPI, so text and dots stay razor sharp.
+    const canvas = document.createElement('canvas');
+    canvas.width = 2400; canvas.height = 3600;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 2400, 3600);
+    ctx.drawImage(img, 0, 0, 2400, 3600);
+    canvas.toBlob((b) => {
+      b.arrayBuffer().then((buf) => {
+        const withDpi = addPngDpi(new Uint8Array(buf), 600);
+        const nm = document.getElementById('bizName').value.trim();
+        saveBlob(new Blob([withDpi], { type: 'image/png' }), 'review-card-' + slugify(nm || 'shop') + '.png');
+      });
+    }, 'image/png');
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(currentCardSvg);
+});
+
+document.getElementById('bizName').addEventListener('input', renderCard);
+
 function showError(msg) {
   document.getElementById('result').style.display = 'none';
   const errorBox = document.getElementById('errorBox');
@@ -483,9 +656,17 @@ function generateFromUrl(raw) {
   document.getElementById('reviewLink').textContent = link;
   document.getElementById('openLink').href = link;
   document.getElementById('fallbackNote').textContent = fallback;
+  currentQrParts = buildQrParts(link);
   currentQrSvg = buildQrSvg(link);
-  currentQrName = 'review-qr-' + (name.split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'shop');
+  currentQrName = 'review-qr-' + slugify(name.split(',')[0]);
   document.getElementById('qrFrame').innerHTML = currentQrSvg;
+  // Auto-fill the business name unless the person has typed their own.
+  const nameInput = document.getElementById('bizName');
+  if (!nameInput.value.trim() || nameInput.value === lastAutoName) {
+    lastAutoName = extractShopName(raw) ? tidyName(name) : '';
+    nameInput.value = lastAutoName;
+  }
+  renderCard();
   result.style.display = 'block';
 }
 
