@@ -236,6 +236,7 @@
     line-height:0;
   }
   .card-frame svg{width:100%;height:auto;display:block;}
+
   footer{
     margin-top:48px;
     font-family:'Helvetica Neue',Arial,sans-serif;
@@ -283,7 +284,7 @@
         <p class="fine" id="fallbackNote"></p>
 
         <div class="qr-block">
-          <label style="text-align:center">Printable card &middot; 4 &times; 6 in</label>
+          <label style="text-align:center">Printable card</label>
           <div class="card-frame" id="cardFrame"></div>
           <div class="qr-actions">
             <button class="dl-png" id="dlCard">Download card (PNG)</button>
@@ -415,8 +416,8 @@ function textWidth(text, px) {
 }
 
 // One line if it fits at a comfortable size, otherwise two balanced lines.
-function fitNameLines(name) {
-  const maxW = 940, maxSize = 76;
+function fitNameLines(name, maxW, maxSize) {
+  maxW = maxW || 940; maxSize = maxSize || 76;
   const perPx = (t) => textWidth(t, 100) / 100;
   let size = Math.min(maxSize, maxW / perPx(name));
   if (size >= 46 || name.indexOf(' ') === -1) return { lines: [name], size: size };
@@ -441,48 +442,49 @@ function starPoints(cx, cy, R, r) {
   return pts.join(' ');
 }
 
-// One corner bracket, drawn once in top-left coordinates and mirrored into place.
-function bracket(tx, ty, sx, sy, color) {
-  return '<g transform="translate(' + tx + ',' + ty + ') scale(' + sx + ',' + sy + ')">' +
-         '<path fill="' + color + '" d="M0 0H249V68H68V249H0Z"/>' +
-         '<path d="M34 249V34H249" fill="none" stroke="#fff" stroke-width="3"/></g>';
-}
+const GOOGLE_G =
+  '<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>' +
+  '<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>' +
+  '<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>' +
+  '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>';
 
+// Printable 4x6 in card (2400x3600 px at 600 DPI): clean white, Google logo, QR panel.
 function buildCardSvg(qrParts, name) {
+  const headSize = Math.min(130, 880 / (textWidth('Review Us', 100) / 100));
   let nameSvg = '';
   if (name) {
-    const f = fitNameLines(name);
-    const lh = f.size * 1.2, total = lh * f.lines.length, top = 655 - total / 2;
+    const f = fitNameLines(name, 900, 70);
+    const lh = f.size * 1.2, total = lh * f.lines.length, top = 546 - total / 2;
     f.lines.forEach((line, i) => {
       const y = top + lh * i + f.size * 0.95;
       nameSvg += '<text x="600" y="' + y.toFixed(1) + '" text-anchor="middle" font-family="' + CARD_FONT +
-                 '" font-weight="700" font-size="' + f.size.toFixed(1) + '" fill="#111">' + xmlEscape(line) + '</text>';
+                 '" font-weight="700" font-size="' + f.size.toFixed(1) + '" fill="#1F1F1F">' + xmlEscape(line) + '</text>';
     });
   }
+  const barColors = ['#4285F4', '#EA4335', '#FBBC05', '#34A853'];
+  let bar = '';
+  barColors.forEach((c, i) => {
+    bar += '<rect x="' + (405 + i * 100) + '" y="632" width="90" height="12" rx="6" fill="' + c + '"/>';
+  });
   let stars = '';
   for (let i = 0; i < 5; i++) {
-    stars += '<polygon points="' + starPoints(601 + (i - 2) * 74, 794, 31, 13) + '" fill="#FFC20E" stroke="#FFC20E" stroke-width="4" stroke-linejoin="round"/>';
+    stars += '<polygon points="' + starPoints(600 + (i - 2) * 92, 716, 38, 16) + '" fill="#FBBC05" stroke="#FBBC05" stroke-width="4" stroke-linejoin="round"/>';
   }
-  const diamond = (cx, cy) => '<rect x="-24" y="-24" width="48" height="48" transform="translate(' + cx + ' ' + cy + ') rotate(45)" fill="#000"/>';
-  const k = 700 / qrParts.size;
+  const k = 680 / qrParts.size;
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1800" width="1200" height="1800">' +
     '<rect width="1200" height="1800" fill="#fff"/>' +
-    '<rect x="44" y="44" width="1112" height="1712" fill="none" stroke="#000" stroke-width="10"/>' +
-    diamond(44, 44) + diamond(1156, 44) + diamond(44, 1756) + diamond(1156, 1756) +
-    '<g transform="translate(472 98) scale(5.333)">' +
-      '<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>' +
-      '<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>' +
-      '<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>' +
-      '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>' +
-    '</g>' +
-    '<text x="600" y="545" text-anchor="middle" font-family="' + CARD_FONT + '" font-weight="800" font-size="112" fill="#000">Review Us</text>' +
-    nameSvg + stars +
-    bracket(162, 760, 1, 1, '#D92B20') + bracket(1047, 760, -1, 1, '#FFA800') +
-    bracket(162, 1645, 1, -1, '#00874A') + bracket(1047, 1645, -1, -1, '#0059E6') +
-    '<g transform="translate(254.5 852.5) scale(' + k.toFixed(5) + ')">' + qrParts.inner + '</g>' +
-    '<text x="600" y="1722" text-anchor="middle" font-family="' + CARD_BODY_FONT + '" font-size="46" fill="#000">*scan with your phone camera*</text>' +
+    '<rect x="36" y="36" width="1128" height="1728" rx="56" fill="none" stroke="#E2E2E2" stroke-width="6"/>' +
+    '<g transform="translate(520 104) scale(3.3333)">' + GOOGLE_G + '</g>' +
+    '<text x="600" y="446" text-anchor="middle" font-family="' + CARD_FONT + '" font-weight="800" font-size="' + headSize.toFixed(1) + '" fill="#111">Review Us</text>' +
+    nameSvg + bar + stars +
+    '<rect x="220" y="826" width="760" height="760" rx="44" fill="#ECEFF1"/>' +
+    '<rect x="220" y="814" width="760" height="760" rx="44" fill="#fff" stroke="#DADCE0" stroke-width="6"/>' +
+    '<g transform="translate(260 854) scale(' + k.toFixed(5) + ')">' + qrParts.inner + '</g>' +
+    '<rect x="320" y="1626" width="560" height="68" rx="34" fill="#4285F4"/>' +
+    '<text x="600" y="1671" text-anchor="middle" font-family="' + CARD_BODY_FONT + '" font-weight="700" font-size="29" fill="#fff">Scan with your phone camera</text>' +
     '</svg>';
 }
+
 
 let currentQrParts = null;
 let currentCardSvg = '';
@@ -503,7 +505,8 @@ function tidyName(full) {
 function renderCard() {
   if (!currentQrParts) return;
   currentCardSvg = buildCardSvg(currentQrParts, document.getElementById('bizName').value.trim());
-  document.getElementById('cardFrame').innerHTML = currentCardSvg;
+  const frame = document.getElementById('cardFrame');
+  frame.innerHTML = currentCardSvg;
 }
 
 // Canvas PNGs carry no print-resolution info, so add a pHYs chunk stating
@@ -599,6 +602,7 @@ document.getElementById('dlCard').addEventListener('click', () => {
   };
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(currentCardSvg);
 });
+
 
 document.getElementById('bizName').addEventListener('input', renderCard);
 
